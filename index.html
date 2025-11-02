@@ -6,6 +6,7 @@
   <style>
     * { margin: 0; padding: 0; }
     #vizContainer { width: 100%; height: 100vh; }
+    tableau-viz { width: 100%; height: 100vh; border: none; }
   </style>
   <link rel="icon" href="https://raizzcapital.com.br/wp-content/uploads/2024/02/logo-raizz-capital-fundo-branco.webp">
 </head>
@@ -13,65 +14,68 @@
   <div id="vizContainer"></div>
 
   <script>
-    let viz;
+    // 🔗 URL do backend
+    const backendURL = "https://tableau-backend-h83x.onrender.com/get_tableau_url?painel=captacao";
+    
+    // 🧭 Lista de dashboards dentro do workbook
     const dashboardNames = ["CAPTACAO | FII DESENV - III", "CAPTACAO | UBERLANDIA"];
-    const tempoPorPainel = 60000;
+    const tempoPorPainel = 60000; // 60 segundos
     let currentDashboardIndex = 0;
+    let vizElement = null;
 
-    const backendURL = "https://tableau-backend-h83x.onrender.com/get_tableau_url";
-
-    async function initViz() {
+    async function carregarViz() {
       try {
-        const response = await fetch("https://tableau-backend-h83x.onrender.com/get_tableau_url?painel=captacao");
+        const response = await fetch(backendURL);
         const data = await response.json();
 
-        if (data.error) throw new Error(data.error);
+        if (data.error) {
+          console.error("Erro ao gerar token:", data.error);
+          return;
+        }
 
-        console.log("✅ URL autenticada recebida:", data.embed_url);
+        const { embed_url, jwt } = data;
+        console.log("✅ URL autenticada recebida:", embed_url);
 
-        const containerDiv = document.getElementById("vizContainer");
-        const options = {
-          hideTabs: true,
-          hideToolbar: true,
-          onFirstInteractive: function() {
-            console.log("✅ Visualização carregada!");
-            listarSheets();
-            iniciarCiclo();
-          }
-        };
+        // 🧩 Cria o componente <tableau-viz>
+        const container = document.getElementById("vizContainer");
+        container.innerHTML = ""; // limpa anterior
+        vizElement = document.createElement("tableau-viz");
+        vizElement.src = embed_url;
+        vizElement.token = jwt; // passa o JWT
+        vizElement.toolbar = "hidden";
+        vizElement.hideTabs = true;
+        container.appendChild(vizElement);
 
-        viz = new tableau.Viz(containerDiv, data.embed_url, options);
+        iniciarCiclo();
       } catch (error) {
         console.error("❌ Erro ao inicializar o Tableau:", error);
       }
     }
 
-    function listarSheets() {
-      const workbook = viz.getWorkbook();
-      const sheets = workbook.getPublishedSheetsInfo();
-      sheets.forEach(s => console.log("Sheet disponível:", s.getName()));
-    }
-
     function iniciarCiclo() {
-      setInterval(trocarPainel, tempoPorPainel);
+      setInterval(() => trocarPainel(), tempoPorPainel);
     }
 
-    function trocarPainel() {
-      const workbook = viz.getWorkbook();
+    async function trocarPainel() {
+      currentDashboardIndex = (currentDashboardIndex + 1) % dashboardNames.length;
+
+      // pega nova URL autenticada
+      const response = await fetch(backendURL);
+      const data = await response.json();
+      const { embed_url } = data;
+
+      // troca apenas o nome da view dentro da URL
       const painelAtual = dashboardNames[currentDashboardIndex];
-
-      workbook.activateSheetAsync(painelAtual)
-        .then(() => {
-          console.log("🔁 Painel ativado:", painelAtual);
-          currentDashboardIndex = (currentDashboardIndex + 1) % dashboardNames.length;
-        })
-        .catch(error => console.error("Erro na transição:", error));
+      const novoUrl = embed_url.replace("CAPTACAOUBERLANDIA", painelAtual.replace(/\s*\|\s*/g, "").replace(/\s+/g, ""));
+      
+      vizElement.src = novoUrl;
+      console.log("🔁 Painel trocado para:", painelAtual);
     }
 
-    initViz();
+    carregarViz();
 
+    // 🔄 Recarrega a cada 15 minutos
     setTimeout(() => location.reload(true), 900000);
   </script>
 </body>
 </html>
-
